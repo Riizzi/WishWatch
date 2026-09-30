@@ -52,7 +52,7 @@ app.post('/api/analyze-purchase', async (req: Request, res: Response) => {
 
 // Setup Vite middleware in dev or static serve in prod
 async function startServer() {
-  const isDev = process.env.NODE_ENV !== 'production';
+  const isDev = process.env.NODE_ENV !== 'production' && !process.argv.includes('--production');
 
   if (isDev) {
     const { createServer: createViteServer } = await import('vite');

@@ -87,6 +87,18 @@ Sem a chave, o app funciona com preenchimento manual. Para ver o app com dados, 
 | `npm run lint` | checagem de tipos com `tsc` |
 | `npm run icons` | regenera os ícones do PWA a partir de `scripts/generate-icons.js` |
 
+## Deploy
+
+O app precisa do servidor Express (é ele que guarda a chave do Gemini), então o deploy é como **Web Service**. Exemplo no [Render](https://render.com):
+
+| Campo | Valor |
+| --- | --- |
+| Build Command | `npm ci && npm run build` |
+| Start Command | `npm start` |
+| Variável de ambiente | `GEMINI_API_KEY` |
+
+Depois do deploy, abra a URL no Chrome do Android e use **Instalar app**.
+
 ## Identidade visual
 
 O app segue o estilo **Retro Ledger**: fundo linho (`#FAF7F2`), cards off-white com sombra sólida de 2px, textos em Plus Jakarta Sans e valores em Space Mono. O ícone segue o padrão monocromático do Android: squircle cinza com símbolo preto.
