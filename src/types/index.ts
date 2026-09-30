@@ -22,6 +22,8 @@ export interface Product {
   createdAt: string;
   status: ProductStatus;
   paidPrice?: number;
+  lastCheckedAt?: string;
+  lastCheckError?: string;
   priceHistory: PricePoint[];
 }
 
@@ -57,6 +59,22 @@ export interface UserSettings {
   dropAlertPercent: number;   // % de queda para alerta (ex: 10)
   enableNotifications: boolean;
   lastCheckedAt?: string;
+}
+
+export interface AppState {
+  products: Product[];
+  settings: UserSettings;
+  alerts: AlertItem[];
+}
+
+export interface ServerHealth {
+  ok: boolean;
+  gemini: boolean;
+  /** true quando há banco na nuvem configurado (Upstash) */
+  sync: boolean;
+  /** true quando o servidor exige chave de acesso */
+  auth: boolean;
+  push: boolean;
 }
 
 export interface AIAnalysisResult {

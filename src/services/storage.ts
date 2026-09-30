@@ -1,9 +1,12 @@
-import { Product, AlertItem, UserSettings, PricePoint } from '../types/index.ts';
+import { Product, AlertItem, UserSettings, AppState } from '../types/index.ts';
+import { remoteApi } from './apiClient.ts';
+import { buildSampleData } from './sampleData.ts';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'wishwatch_products_v1',
   SETTINGS: 'wishwatch_settings_v1',
   ALERTS: 'wishwatch_alerts_v1',
+  REMOTE_CACHE: 'wishwatch_remote_cache_v1',
 };
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -15,14 +18,11 @@ export const DEFAULT_SETTINGS: UserSettings = {
 };
 
 export interface IProductRepository {
-  getAll(): Promise<Product[]>;
-  getById(id: string): Promise<Product | null>;
+  getState(): Promise<AppState>;
   save(product: Product): Promise<void>;
   update(product: Product): Promise<void>;
   delete(id: string): Promise<void>;
-  getSettings(): Promise<UserSettings>;
   saveSettings(settings: UserSettings): Promise<void>;
-  getAlerts(): Promise<AlertItem[]>;
   saveAlert(alert: AlertItem): Promise<void>;
   clearAlerts(): Promise<void>;
   loadSampleData(): Promise<void>;
@@ -31,224 +31,195 @@ export interface IProductRepository {
   clearAllData(): Promise<void>;
 }
 
-class LocalStorageProductRepository implements IProductRepository {
-  async getAll(): Promise<Product[]> {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-      if (!data) return [];
-      return JSON.parse(data) as Product[];
-    } catch {
-      return [];
-    }
-  }
-
-  async getById(id: string): Promise<Product | null> {
-    const products = await this.getAll();
-    return products.find((p) => p.id === id) || null;
-  }
-
-  async save(product: Product): Promise<void> {
-    const products = await this.getAll();
-    const existingIndex = products.findIndex((p) => p.id === product.id);
-    if (existingIndex >= 0) {
-      products[existingIndex] = product;
-    } else {
-      products.unshift(product);
-    }
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-  }
-
-  async update(product: Product): Promise<void> {
-    return this.save(product);
-  }
-
-  async delete(id: string): Promise<void> {
-    const products = await this.getAll();
-    const filtered = products.filter((p) => p.id !== id);
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(filtered));
-  }
-
-  async getSettings(): Promise<UserSettings> {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-      if (!data) return DEFAULT_SETTINGS;
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(data) };
-    } catch {
-      return DEFAULT_SETTINGS;
-    }
-  }
-
-  async saveSettings(settings: UserSettings): Promise<void> {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-  }
-
-  async getAlerts(): Promise<AlertItem[]> {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.ALERTS);
-      if (!data) return [];
-      return JSON.parse(data) as AlertItem[];
-    } catch {
-      return [];
-    }
-  }
-
-  async saveAlert(alert: AlertItem): Promise<void> {
-    const alerts = await this.getAlerts();
-    alerts.unshift(alert);
-    // Guarda até 100 registros históricos de alertas
-    localStorage.setItem(STORAGE_KEYS.ALERTS, JSON.stringify(alerts.slice(0, 100)));
-  }
-
-  async clearAlerts(): Promise<void> {
-    localStorage.removeItem(STORAGE_KEYS.ALERTS);
-  }
-
-  async exportData(): Promise<string> {
-    const products = await this.getAll();
-    const settings = await this.getSettings();
-    const alerts = await this.getAlerts();
-    return JSON.stringify({ products, settings, alerts, exportedAt: new Date().toISOString() }, null, 2);
-  }
-
-  async importData(jsonString: string): Promise<boolean> {
-    try {
-      const parsed = JSON.parse(jsonString);
-      if (Array.isArray(parsed.products)) {
-        localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(parsed.products));
-      }
-      if (parsed.settings) {
-        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(parsed.settings));
-      }
-      if (Array.isArray(parsed.alerts)) {
-        localStorage.setItem(STORAGE_KEYS.ALERTS, JSON.stringify(parsed.alerts));
-      }
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async clearAllData(): Promise<void> {
-    localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
-    localStorage.removeItem(STORAGE_KEYS.ALERTS);
-  }
-
-  async loadSampleData(): Promise<void> {
-    const now = new Date();
-
-    const generateDates = (daysAgo: number) => {
-      const d = new Date(now);
-      d.setDate(d.getDate() - daysAgo);
-      return d.toISOString();
-    };
-
-    const sonyHistory: PricePoint[] = [
-      { date: generateDates(30), price: 1849.00, inStock: true },
-      { date: generateDates(24), price: 1799.00, inStock: true },
-      { date: generateDates(18), price: 1749.00, inStock: true },
-      { date: generateDates(12), price: 1699.00, inStock: true },
-      { date: generateDates(6), price: 1599.00, inStock: true },
-      { date: generateDates(1), price: 1489.00, originalPrice: 1849.00, inStock: true },
-    ];
-
-    const kindleHistory: PricePoint[] = [
-      { date: generateDates(30), price: 699.00, inStock: true },
-      { date: generateDates(22), price: 699.00, inStock: true },
-      { date: generateDates(15), price: 749.00, inStock: true },
-      { date: generateDates(8), price: 749.00, inStock: true },
-      { date: generateDates(3), price: 699.00, originalPrice: 849.00, inStock: true }, // Desconto inflado: preço "de" diz 849 mas histórico já esteve em 699
-      { date: generateDates(0), price: 699.00, originalPrice: 849.00, inStock: true },
-    ];
-
-    const dellHistory: PricePoint[] = [
-      { date: generateDates(30), price: 2799.00, inStock: true },
-      { date: generateDates(20), price: 2699.00, inStock: true },
-      { date: generateDates(14), price: 2549.00, inStock: true },
-      { date: generateDates(7), price: 2499.00, inStock: true },
-      { date: generateDates(0), price: 2399.00, originalPrice: 2799.00, inStock: true },
-    ];
-
-    const sampleProducts: Product[] = [
-      {
-        id: 'prod-sample-1',
-        url: 'https://www.amazon.com.br/dp/B0863TXGM3',
-        name: 'Headphone Sony WH-1000XM4 Cancelamento de Ruído Preto',
-        reason: 'Fone atual com bateria desgastada para trabalho remoto',
-        priority: 'preciso',
-        category: 'Eletrônicos',
-        store: 'Amazon',
-        imageUrl: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=600&auto=format&fit=crop&q=80',
-        targetPrice: 1500.00,
-        createdAt: generateDates(30),
-        status: 'monitorando',
-        priceHistory: sonyHistory,
-      },
-      {
-        id: 'prod-sample-2',
-        url: 'https://www.amazon.com.br/dp/B08N3TCP2F',
-        name: 'Kindle Paperwhite 16 GB Tela de 6.8 Polegadas com Luz Ajustável',
-        reason: 'Leitura diária de livros técnicos sem reflexos na vista',
-        priority: 'quero',
-        category: 'Livros',
-        store: 'Amazon',
-        imageUrl: 'https://images.unsplash.com/photo-1592496001020-d31bd830651f?w=600&auto=format&fit=crop&q=80',
-        targetPrice: 650.00,
-        createdAt: generateDates(30),
-        status: 'monitorando',
-        priceHistory: kindleHistory,
-      },
-      {
-        id: 'prod-sample-3',
-        url: 'https://www.kabum.com.br/produto/monitor-dell-27-quad-hd-165hz',
-        name: 'Monitor Dell 27 Polegadas Quad HD 165Hz FreeSync Premium',
-        reason: 'Segunda tela para produtividade e edição de diagramas',
-        priority: 'desejo',
-        category: 'Games',
-        store: 'Kabum',
-        imageUrl: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=600&auto=format&fit=crop&q=80',
-        targetPrice: 2100.00,
-        createdAt: generateDates(30),
-        status: 'monitorando',
-        priceHistory: dellHistory,
-      },
-    ];
-
-    const sampleAlerts: AlertItem[] = [
-      {
-        id: 'alert-sample-1',
-        date: generateDates(1),
-        productId: 'prod-sample-1',
-        productName: 'Headphone Sony WH-1000XM4 Cancelamento de Ruído Preto',
-        event: 'Preço abaixo do alvo',
-        value: 1489.00,
-        oldValue: 1599.00,
-        store: 'Amazon',
-      },
-      {
-        id: 'alert-sample-2',
-        date: generateDates(1),
-        productId: 'prod-sample-1',
-        productName: 'Headphone Sony WH-1000XM4 Cancelamento de Ruído Preto',
-        event: 'Menor preço registrado',
-        value: 1489.00,
-        oldValue: 1599.00,
-        store: 'Amazon',
-      },
-      {
-        id: 'alert-sample-3',
-        date: generateDates(7),
-        productId: 'prod-sample-3',
-        productName: 'Monitor Dell 27 Polegadas Quad HD 165Hz FreeSync Premium',
-        event: 'Menor preço registrado',
-        value: 2399.00,
-        oldValue: 2499.00,
-        store: 'Kabum',
-      },
-    ];
-
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(sampleProducts));
-    localStorage.setItem(STORAGE_KEYS.ALERTS, JSON.stringify(sampleAlerts));
+function readJSON<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
   }
 }
 
-export const storage = new LocalStorageProductRepository();
+function writeJSON(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    console.warn('Não foi possível salvar no armazenamento local:', err);
+  }
+}
+
+function parseImport(jsonString: string): Partial<AppState> | null {
+  try {
+    const parsed = JSON.parse(jsonString);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      products: Array.isArray(parsed.products) ? parsed.products : undefined,
+      settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : undefined,
+      alerts: Array.isArray(parsed.alerts) ? parsed.alerts : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function exportJSON(state: AppState) {
+  return JSON.stringify({ ...state, exportedAt: new Date().toISOString() }, null, 2);
+}
+
+/** Modo local: tudo fica no navegador deste aparelho. */
+class LocalRepository implements IProductRepository {
+  async getState(): Promise<AppState> {
+    return {
+      products: readJSON<Product[]>(STORAGE_KEYS.PRODUCTS, []),
+      settings: { ...DEFAULT_SETTINGS, ...readJSON<Partial<UserSettings>>(STORAGE_KEYS.SETTINGS, {}) },
+      alerts: readJSON<AlertItem[]>(STORAGE_KEYS.ALERTS, []),
+    };
+  }
+
+  async save(product: Product) {
+    const products = readJSON<Product[]>(STORAGE_KEYS.PRODUCTS, []);
+    const i = products.findIndex((p) => p.id === product.id);
+    if (i >= 0) products[i] = product;
+    else products.unshift(product);
+    writeJSON(STORAGE_KEYS.PRODUCTS, products);
+  }
+
+  update(product: Product) {
+    return this.save(product);
+  }
+
+  async delete(id: string) {
+    writeJSON(STORAGE_KEYS.PRODUCTS, readJSON<Product[]>(STORAGE_KEYS.PRODUCTS, []).filter((p) => p.id !== id));
+  }
+
+  async saveSettings(settings: UserSettings) {
+    writeJSON(STORAGE_KEYS.SETTINGS, settings);
+  }
+
+  async saveAlert(alert: AlertItem) {
+    const alerts = readJSON<AlertItem[]>(STORAGE_KEYS.ALERTS, []);
+    writeJSON(STORAGE_KEYS.ALERTS, [alert, ...alerts].slice(0, 100));
+  }
+
+  async clearAlerts() {
+    localStorage.removeItem(STORAGE_KEYS.ALERTS);
+  }
+
+  async loadSampleData() {
+    const { products, alerts } = buildSampleData();
+    writeJSON(STORAGE_KEYS.PRODUCTS, products);
+    writeJSON(STORAGE_KEYS.ALERTS, alerts);
+  }
+
+  async exportData() {
+    return exportJSON(await this.getState());
+  }
+
+  async importData(jsonString: string) {
+    const state = parseImport(jsonString);
+    if (!state) return false;
+    if (state.products) writeJSON(STORAGE_KEYS.PRODUCTS, state.products);
+    if (state.settings) writeJSON(STORAGE_KEYS.SETTINGS, state.settings);
+    if (state.alerts) writeJSON(STORAGE_KEYS.ALERTS, state.alerts);
+    return true;
+  }
+
+  async clearAllData() {
+    localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
+    localStorage.removeItem(STORAGE_KEYS.ALERTS);
+  }
+}
+
+/**
+ * Modo sincronizado: os dados ficam no servidor (Upstash Redis), onde o
+ * monitoramento 24/7 também os lê. Guarda uma cópia local para abrir offline.
+ */
+class RemoteRepository implements IProductRepository {
+  async getState(): Promise<AppState> {
+    try {
+      const state = await remoteApi.getState();
+      writeJSON(STORAGE_KEYS.REMOTE_CACHE, state);
+      return state;
+    } catch (err) {
+      const cached = readJSON<AppState | null>(STORAGE_KEYS.REMOTE_CACHE, null);
+      if (cached && !navigator.onLine) return cached;
+      throw err;
+    }
+  }
+
+  async save(product: Product) {
+    await remoteApi.saveProduct(product);
+  }
+
+  update(product: Product) {
+    return this.save(product);
+  }
+
+  async delete(id: string) {
+    await remoteApi.deleteProduct(id);
+  }
+
+  async saveSettings(settings: UserSettings) {
+    await remoteApi.saveSettings(settings);
+  }
+
+  async saveAlert(alert: AlertItem) {
+    await remoteApi.addAlert(alert);
+  }
+
+  async clearAlerts() {
+    await remoteApi.clearAlerts();
+  }
+
+  async loadSampleData() {
+    await remoteApi.importState(buildSampleData());
+  }
+
+  async exportData() {
+    return exportJSON(await this.getState());
+  }
+
+  async importData(jsonString: string) {
+    const state = parseImport(jsonString);
+    if (!state) return false;
+    await remoteApi.importState(state);
+    return true;
+  }
+
+  async clearAllData() {
+    await remoteApi.clearData();
+  }
+}
+
+/** Fachada usada pelo app; alterna entre o modo local e o sincronizado. */
+class StorageFacade implements IProductRepository {
+  readonly local = new LocalRepository();
+  private readonly remote = new RemoteRepository();
+  private mode: 'local' | 'remote' = 'local';
+
+  setRemote(enabled: boolean) {
+    this.mode = enabled ? 'remote' : 'local';
+  }
+
+  isRemote() {
+    return this.mode === 'remote';
+  }
+
+  private get impl(): IProductRepository {
+    return this.mode === 'remote' ? this.remote : this.local;
+  }
+
+  getState() { return this.impl.getState(); }
+  save(p: Product) { return this.impl.save(p); }
+  update(p: Product) { return this.impl.update(p); }
+  delete(id: string) { return this.impl.delete(id); }
+  saveSettings(s: UserSettings) { return this.impl.saveSettings(s); }
+  saveAlert(a: AlertItem) { return this.impl.saveAlert(a); }
+  clearAlerts() { return this.impl.clearAlerts(); }
+  loadSampleData() { return this.impl.loadSampleData(); }
+  exportData() { return this.impl.exportData(); }
+  importData(json: string) { return this.impl.importData(json); }
+  clearAllData() { return this.impl.clearAllData(); }
+}
+
+export const storage = new StorageFacade();

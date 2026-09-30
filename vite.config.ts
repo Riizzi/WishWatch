@@ -11,9 +11,11 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        workbox: {
+        strategies: 'injectManifest',
+        srcDir: 'src',
+        filename: 'sw.ts',
+        injectManifest: {
           globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-          navigateFallbackDenylist: [/^\/api\//],
         },
         includeAssets: ['icon.svg', 'apple-touch-icon.png', 'notification-icon.png'],
         manifest: {

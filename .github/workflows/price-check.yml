@@ -1,0 +1,35 @@
+name: Monitoramento de preços
+
+# Verifica os preços a cada 3 horas, mesmo com o app fechado.
+# O servidor grava o histórico e envia as notificações push.
+# Requer a variável APP_URL e o segredo APP_ACCESS_KEY.
+
+on:
+  schedule:
+    - cron: '23 */3 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    if: ${{ vars.APP_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Verificar todos os produtos
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          APP_ACCESS_KEY: ${{ secrets.APP_ACCESS_KEY }}
+        run: |
+          # O plano gratuito do Render "dorme"; as tentativas dão tempo para ele acordar
+          curl --fail-with-body --silent --show-error \
+            --retry 6 --retry-delay 20 --retry-all-errors --max-time 900 \
+            -X POST "${APP_URL%/}/api/check-all" \
+            -H "Authorization: Bearer $APP_ACCESS_KEY" \
+            -o result.json
+          node -e '
+            const r = require("./result.json");
+            const lines = [`Verificados: ${r.checked} · Falhas de leitura: ${r.failed} · Alertas: ${r.alerts}`, ""];
+            for (const i of r.items) lines.push(`- ${i.name}: ${i.price === null ? "sem leitura" : "R$ " + i.price.toFixed(2)}${i.alerts.length ? " · " + i.alerts.join(", ") : ""}`);
+            console.log(lines.join("\n"));
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+          '

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Product, UserSettings, AlertItem, Priority, ProductStatus } from './types/index.ts';
+import { Product, UserSettings, AlertItem, Priority, ProductStatus, ServerHealth } from './types/index.ts';
+import { initSync, SyncStatus } from './services/sync.ts';
 import { storage, DEFAULT_SETTINGS } from './services/storage.ts';
 import { checkSingleProduct } from './services/monitor.ts';
 import { Header } from './components/Header.tsx';
@@ -26,6 +27,12 @@ export default function App() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('local');
+  const [health, setHealth] = useState<ServerHealth | null>(null);
+  const [pendingProductId, setPendingProductId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
 
   // UI state
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -60,21 +67,69 @@ export default function App() {
   // Load initial data
   const loadData = async () => {
     try {
-      const [storedProducts, storedSettings, storedAlerts] = await Promise.all([
-        storage.getAll(),
-        storage.getSettings(),
-        storage.getAlerts(),
-      ]);
-      setProducts(storedProducts);
-      setSettings(storedSettings);
-      setAlerts(storedAlerts);
+      const state = await storage.getState();
+      setProducts(state.products);
+      setSettings(state.settings);
+      setAlerts(state.alerts);
+      setLoadError(null);
+    } catch (err) {
+      console.error('Erro ao carregar dados:', err);
+      setLoadError(err instanceof Error ? err.message : 'Erro ao carregar dados');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    initSync()
+      .then(({ status, health }) => {
+        setSyncStatus(status);
+        setHealth(health);
+      })
+      .finally(loadData);
+  }, []);
+
+  // Abre o produto indicado na URL (?product=id), usado pelas notificações
+  const openProductFromUrl = (href: string) => {
+    try {
+      const id = new URL(href, window.location.origin).searchParams.get('product');
+      if (id) setPendingProductId(id);
+    } catch {
+      // URL inválida
+    }
+  };
+
+  useEffect(() => {
+    openProductFromUrl(window.location.href);
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'open-url') {
+        openProductFromUrl(event.data.url);
+        loadData();
+      }
+    };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!pendingProductId || loading) return;
+    const found = products.find((p) => p.id === pendingProductId);
+    if (found) setSelectedProduct(found);
+    setPendingProductId(null);
+    window.history.replaceState(null, '', window.location.pathname);
+  }, [pendingProductId, loading, products]);
+
+  // Recarrega ao voltar para o app (o monitoramento pode ter atualizado os preços)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && storage.isRemote() && !refreshingAllRef.current) {
+        loadData();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Checa todos os produtos em fila, um por vez, com pausa entre as requisições
@@ -110,7 +165,11 @@ export default function App() {
     const updatedSettings = { ...settingsRef.current, lastCheckedAt: new Date().toISOString() };
     setSettings(updatedSettings);
     await storage.saveSettings(updatedSettings);
-    setAlerts(await storage.getAlerts());
+    if (storage.isRemote()) {
+      await loadData();
+    } else {
+      setAlerts((await storage.getState()).alerts);
+    }
 
     setRefreshingId(null);
     setRefreshProgress(null);
@@ -148,13 +207,12 @@ export default function App() {
 
     setRefreshingId(productToRefresh.id);
     try {
-      const { product: updated } = await checkSingleProduct(productToRefresh, settings);
+      const { product: updated, alerts: updatedAlerts } = await checkSingleProduct(productToRefresh, settings);
       setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       if (selectedProduct?.id === updated.id) {
         setSelectedProduct(updated);
       }
-      const refreshedAlerts = await storage.getAlerts();
-      setAlerts(refreshedAlerts);
+      if (updatedAlerts.length) setAlerts((prev) => [...updatedAlerts, ...prev].slice(0, 100));
     } catch (err) {
       console.error('Erro ao atualizar produto:', err);
     } finally {
@@ -167,17 +225,39 @@ export default function App() {
     setIsAddOpen(true);
   };
 
+  const showToast = (message: string) => {
+    setToast(message);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3500);
+  };
+
+  /** Executa uma operação de dados e mostra um aviso se ela falhar. */
+  const safely = async (fn: () => Promise<void>, errorMessage = 'Não foi possível salvar. Verifique a conexão.') => {
+    try {
+      await fn();
+      return true;
+    } catch (err) {
+      console.error(err);
+      showToast(errorMessage);
+      return false;
+    }
+  };
+
   // Product mutations
   const handleSaveProduct = async (product: Product) => {
-    await storage.save(product);
-    await loadData();
+    const ok = await safely(() => storage.save(product));
+    if (!ok) return;
+    setProducts((prev) => {
+      const exists = prev.some((p) => p.id === product.id);
+      return exists ? prev.map((p) => (p.id === product.id ? product : p)) : [product, ...prev];
+    });
     if (selectedProduct?.id === product.id) {
       setSelectedProduct(product);
     }
   };
 
   const handleDeleteProduct = async (id: string) => {
-    await storage.delete(id);
+    if (!(await safely(() => storage.delete(id)))) return;
     setProducts((prev) => prev.filter((p) => p.id !== id));
     if (selectedProduct?.id === id) {
       setSelectedProduct(null);
@@ -191,7 +271,7 @@ export default function App() {
       status: 'comprado',
       paidPrice,
     };
-    await storage.update(updated);
+    if (!(await safely(() => storage.update(updated)))) return;
     setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     if (selectedProduct?.id === updated.id) {
       setSelectedProduct(updated);
@@ -281,6 +361,32 @@ export default function App() {
               {refreshProgress}
             </span>
                       </div>
+        )}
+
+        {syncStatus === 'available' && (
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="mt-3 w-full text-left p-3 rounded-xl bg-[#FFFDF9] border border-[#E8DFD1] text-xs text-[#57534E] flex items-center justify-between gap-3"
+          >
+            <span>
+              <strong className="text-[#292524]">Sincronização disponível.</strong> Informe a chave de acesso para
+              ativar o monitoramento 24/7 e as notificações.
+            </span>
+            <span className="font-mono-ledger uppercase text-[10px] text-[#292524] shrink-0">Configurar</span>
+          </button>
+        )}
+
+        {loadError && (
+          <div
+            role="alert"
+            className="mt-3 p-3 rounded-xl bg-[#FDF2F0] border border-[#F1B8AF] text-xs text-[#991B1B] flex items-center justify-between gap-3"
+          >
+            <span>Não foi possível carregar os dados do servidor.</span>
+            <button type="button" onClick={loadData} className="font-mono-ledger uppercase text-[10px] underline">
+              Tentar de novo
+            </button>
+          </div>
         )}
 
         {/* Resumo contábil do topo */}
@@ -407,7 +513,7 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => storage.loadSampleData().then(() => loadData())}
+                  onClick={() => safely(() => storage.loadSampleData()).then(loadData)}
                   className="retro-btn text-xs"
                 >
                   Carregar exemplo
@@ -492,8 +598,7 @@ export default function App() {
           alerts={alerts}
           onClose={() => setIsAlertsOpen(false)}
           onClearAlerts={async () => {
-            await storage.clearAlerts();
-            setAlerts([]);
+            if (await safely(() => storage.clearAlerts())) setAlerts([]);
           }}
           onSelectProduct={(productId) => {
             const found = products.find((p) => p.id === productId);
@@ -508,11 +613,25 @@ export default function App() {
           settings={settings}
           onClose={() => setIsSettingsOpen(false)}
           onSaveSettings={async (updated) => {
-            setSettings(updated);
-            await storage.saveSettings(updated);
+            if (await safely(() => storage.saveSettings(updated))) setSettings(updated);
           }}
           onReloadData={loadData}
+          syncStatus={syncStatus}
+          health={health}
+          onSyncStatusChange={(status) => {
+            setSyncStatus(status);
+            loadData();
+          }}
         />
+      )}
+
+      {toast && (
+        <div
+          role="status"
+          className="fixed left-1/2 -translate-x-1/2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6 z-[60] max-w-[calc(100%-2rem)] px-4 py-2.5 rounded-xl bg-[#292524] text-[#FAF7F2] text-xs font-mono-ledger shadow-[2px_2px_0_#E5DCD0]"
+        >
+          {toast}
+        </div>
       )}
     </div>
   );

@@ -17,5 +17,7 @@ jobs:
       - run: npm ci
       - name: Checagem de tipos
         run: npm run lint
+      - name: Testes
+        run: npm test
       - name: Build
         run: npm run build

@@ -1,0 +1,85 @@
+name: Android (APK)
+
+# Gera o APK do WishWatch (Trusted Web Activity) e publica em Releases.
+# Requer:
+#   - variável APP_URL      (Settings → Secrets and variables → Actions → Variables)
+#   - segredo ANDROID_KEYSTORE_PASSWORD (… → Secrets)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'public/pwa-*.png'
+      - '.github/workflows/android.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    if: ${{ vars.APP_URL != '' }}
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ vars.APP_URL }}
+      KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+    steps:
+      - name: Conferir configuração
+        run: |
+          if [ -z "$KS_PASS" ]; then
+            echo "::error::Crie o segredo ANDROID_KEYSTORE_PASSWORD (veja docs/CONFIGURACAO.md)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Gerar projeto Android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          ICON_BASE: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/public
+        run: node android/generate-twa.mjs
+
+      - name: Compilar
+        working-directory: android/build/twa
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Assinar
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          UNSIGNED=$(ls android/build/twa/app/build/outputs/apk/release/*.apk | head -1)
+          "$BT/zipalign" -p -f 4 "$UNSIGNED" aligned.apk
+          "$BT/apksigner" sign \
+            --ks android/wishwatch.keystore --ks-key-alias wishwatch \
+            --ks-pass env:KS_PASS --key-pass env:KS_PASS \
+            --out WishWatch.apk aligned.apk
+          "$BT/apksigner" verify --print-certs WishWatch.apk | tee certs.txt
+          EXPECTED=$(node -e "console.log(require('./android/assetlinks.json')[0].target.sha256_cert_fingerprints[0].replace(/:/g,'').toLowerCase())")
+          grep -qi "SHA-256 digest: $EXPECTED" certs.txt || { echo "::error::A assinatura não confere com android/assetlinks.json"; exit 1; }
+
+      - name: Publicar em Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: WishWatch 1.0.${{ github.run_number }}
+          files: WishWatch.apk
+          body: |
+            APK do WishWatch para Android.
+
+            Baixe o **WishWatch.apk** abaixo no celular e toque nele para instalar.
+            O app abre ${{ vars.APP_URL }} em tela cheia; as atualizações do site chegam sem reinstalar.

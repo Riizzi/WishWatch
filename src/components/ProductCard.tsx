@@ -36,7 +36,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const workHours = calculateWorkHours(currentPrice, settings.monthlyIncome, settings.monthlyHours);
 
   // Verification time
-  const lastCheckDate = currentPoint?.date || product.createdAt;
+  const lastCheckDate = product.lastCheckedAt || currentPoint?.date || product.createdAt;
   const verifiedText = formatTimeAgo(lastCheckDate);
 
   // Status stamps logic:
@@ -164,6 +164,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             {product.status === 'monitorando' && isInflatedDiscount && (
               <span className="ledger-stamp text-[#991B1B] border-[#F1B8AF] bg-[#FDF2F0]/80">
                 DESCONTO INFLADO
+              </span>
+            )}
+            {product.status === 'monitorando' && product.lastCheckError && (
+              <span className="ledger-stamp text-[#92400E] border-[#F3D2BA] bg-[#FDF5EE]" title={product.lastCheckError}>
+                FALHA NA LEITURA
               </span>
             )}
             {currentPoint?.uncertain && (

@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
-import { UserSettings } from '../types/index.ts';
+import { ServerHealth, UserSettings } from '../types/index.ts';
+import { SyncStatus } from '../services/sync.ts';
+import { SyncSection, NotificationSection } from './SyncSettings.tsx';
 import { ModalShell, ModalHeader } from './ui.tsx';
 import { storage } from '../services/storage.ts';
 import { formatBRL } from '../utils/formatters.ts';
-import { requestNotificationPermission } from '../services/monitor.ts';
 import {
   Save,
   Database,
   Download,
   Upload,
   Trash2,
-  Bell,
   Clock,
   DollarSign,
   Percent,
@@ -21,6 +21,9 @@ interface SettingsModalProps {
   onClose: () => void;
   onSaveSettings: (settings: UserSettings) => void;
   onReloadData: () => void;
+  syncStatus: SyncStatus;
+  health: ServerHealth | null;
+  onSyncStatusChange: (status: SyncStatus) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -28,6 +31,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onSaveSettings,
   onReloadData,
+  syncStatus,
+  health,
+  onSyncStatusChange,
 }) => {
   const [income, setIncome] = useState<string>(String(settings.monthlyIncome || 6000));
   const [hours, setHours] = useState<string>(String(settings.monthlyHours || 160));
@@ -53,24 +59,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setTimeout(() => setMessage(null), 2500);
   };
 
-  const handleToggleNotifications = async () => {
-    if (!notifications) {
-      const granted = await requestNotificationPermission();
-      setNotifications(granted);
-      if (!granted) {
-        alert('Permissão para notificações do navegador não foi concedida.');
-      }
-    } else {
-      setNotifications(false);
+  const flash = (text: string) => {
+    setMessage(text);
+    setTimeout(() => setMessage(null), 2500);
+  };
+
+  const run = async (fn: () => Promise<void>, ok: string) => {
+    try {
+      await fn();
+      onReloadData();
+      flash(ok);
+    } catch {
+      alert('Não foi possível concluir. Verifique a conexão.');
     }
   };
 
   const handleLoadSamples = async () => {
     if (window.confirm('Carregar 3 produtos de exemplo com histórico fictício de 30 dias? Os produtos atuais serão substituídos.')) {
-      await storage.loadSampleData();
-      onReloadData();
-      setMessage('Exemplo carregado');
-      setTimeout(() => setMessage(null), 2500);
+      await run(() => storage.loadSampleData(), 'Exemplo carregado');
     }
   };
 
@@ -91,14 +97,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const reader = new FileReader();
     reader.onload = async (event) => {
       const content = event.target?.result as string;
-      const success = await storage.importData(content);
-      if (success) {
-        onReloadData();
-        setMessage('Dados importados');
-        setTimeout(() => setMessage(null), 2500);
-      } else {
-        alert('Arquivo JSON inválido');
-      }
+      await run(async () => {
+        if (!(await storage.importData(content))) throw new Error('JSON inválido');
+      }, 'Dados importados');
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -106,10 +107,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleClearData = async () => {
     if (window.confirm('Apagar todos os produtos e alertas? Esta ação não pode ser desfeita.')) {
-      await storage.clearAllData();
-      onReloadData();
-      setMessage('Dados apagados');
-      setTimeout(() => setMessage(null), 2500);
+      await run(() => storage.clearAllData(), 'Dados apagados');
     }
   };
 
@@ -129,8 +127,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
+          <SyncSection status={syncStatus} health={health} onStatusChange={onSyncStatusChange} />
+
           {/* Seção 1: Renda e Horas de Trabalho */}
-          <form onSubmit={handleSave} className="space-y-4">
+          <form onSubmit={handleSave} className="space-y-4 pt-3 border-t border-[#E8DFD1]">
             <div>
               <div className="text-xs font-mono-ledger uppercase text-[#78716C] tracking-wider mb-2 font-bold flex items-center gap-1.5">
                 <DollarSign className="w-3.5 h-3.5" />
@@ -185,7 +185,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="ledger-label">
-                    Intervalo de Checagem
+                    Checagem com app aberto
                   </label>
                   <select
                     value={checkInterval}
@@ -217,38 +217,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
               </div>
-
-              {/* Notificações do navegador */}
-              <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#FAF7F2] border border-[#E8DFD1]">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Bell className="w-4 h-4 text-[#78716C] shrink-0" />
-                  <div>
-                    <div className="text-xs font-semibold text-[#292524]">
-                      Notificações
-                    </div>
-                    <div className="text-[10px] text-[#78716C]">
-                      Preço abaixo do alvo, queda percentual, menor preço e volta ao estoque
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleToggleNotifications}
-                  role="switch"
-                  aria-checked={notifications}
-                  aria-label="Notificações"
-                  className={`shrink-0 w-11 h-6 rounded-full transition-colors relative p-0.5 ${
-                    notifications ? 'bg-[#166534]' : 'bg-[#D6CFC4]'
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                      notifications ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
+              <NotificationSection
+                status={syncStatus}
+                localEnabled={notifications}
+                onLocalChange={(enabled) => {
+                  setNotifications(enabled);
+                  onSaveSettings({ ...settings, enableNotifications: enabled });
+                }}
+              />
             </div>
 
             <button

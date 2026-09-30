@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.riizzi.wishwatch",
+      "sha256_cert_fingerprints": ["A3:78:67:B2:F7:43:CC:17:9C:FB:69:3D:14:7F:2B:17:8A:BC:9F:48:07:A3:F4:30:A0:D7:EF:7F:85:6D:0F:A1"]
+    }
+  }
+]

@@ -1,77 +1,52 @@
-import express, { Request, Response } from 'express';
-import dotenv from 'dotenv';
+import './server/env.ts';
+import express from 'express';
+import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { checkPrice } from './src/services/priceChecker.ts';
-import { analyzePurchase } from './src/services/purchaseAnalyzer.ts';
+import { createStore } from './server/db.ts';
+import { WishWatchRepo } from './server/repo.ts';
+import { createApiRouter } from './server/api.ts';
 
-dotenv.config({ path: ['.env.local', '.env'], quiet: true });
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+const ROOT = import.meta.dirname;
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const isDev = process.env.NODE_ENV !== 'production' && !process.argv.includes('--production');
 
-app.use(express.json({ limit: '1mb' }));
+const repo = new WishWatchRepo(createStore());
 
-app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({ ok: true, gemini: Boolean(process.env.GEMINI_API_KEY) });
+app.use(express.json({ limit: '2mb' }));
+app.use('/api', createApiRouter(repo));
+
+// Digital Asset Links: permite que o APK (TWA) abra o site em tela cheia
+app.get('/.well-known/assetlinks.json', (_req, res) => {
+  res.sendFile(path.resolve(ROOT, 'android', 'assetlinks.json'));
 });
 
-// API Endpoints
-app.post('/api/check-price', async (req: Request, res: Response) => {
-  try {
-    const { url } = req.body;
-    if (!url || typeof url !== 'string') {
-      res.status(400).json({ error: 'URL do produto é obrigatória' });
-      return;
-    }
-    const result = await checkPrice(url);
-    res.json(result);
-  } catch (error: any) {
-    console.error('Erro em /api/check-price:', error);
-    res.status(500).json({ error: error.message || 'Erro ao verificar preço' });
-  }
-});
-
-app.post('/api/analyze-purchase', async (req: Request, res: Response) => {
-  try {
-    const { product, settings } = req.body;
-    if (!product) {
-      res.status(400).json({ error: 'Dados do produto são obrigatórios' });
-      return;
-    }
-    const result = await analyzePurchase(product, settings || { monthlyIncome: 6000, monthlyHours: 160 });
-    res.json(result);
-  } catch (error: any) {
-    console.error('Erro em /api/analyze-purchase:', error);
-    res.status(500).json({ error: error.message || 'Erro ao analisar compra' });
-  }
-});
-
-// Setup Vite middleware in dev or static serve in prod
-async function startServer() {
-  const isDev = process.env.NODE_ENV !== 'production' && !process.argv.includes('--production');
-
+async function start() {
   if (isDev) {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
+    const { createServer } = await import('vite');
+    const vite = await createServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.resolve(distPath, 'index.html'));
-    });
+    const dist = path.resolve(ROOT, 'dist');
+    if (!fs.existsSync(dist)) {
+      console.error('Pasta dist/ não encontrada. Rode "npm run build" antes de "npm start".');
+      process.exit(1);
+    }
+    app.use(
+      express.static(dist, {
+        setHeaders(res, file) {
+          // O service worker precisa ser sempre revalidado para as atualizações chegarem
+          if (file.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache');
+        },
+      })
+    );
+    app.get('*', (_req, res) => res.sendFile(path.resolve(dist, 'index.html')));
   }
 
   app.listen(PORT, () => {
-    console.log(`WishWatch rodando na porta ${PORT} (${isDev ? 'desenvolvimento' : 'produção'})`);
+    const storage = repo.kind === 'upstash' ? 'Upstash Redis' : 'arquivo local (.data/)';
+    console.log(`WishWatch na porta ${PORT} · ${isDev ? 'desenvolvimento' : 'produção'} · dados: ${storage}`);
   });
 }
 
-startServer();
+start();

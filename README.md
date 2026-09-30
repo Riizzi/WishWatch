@@ -25,7 +25,10 @@ Wishlist com monitoramento de preços. Cole o link de um produto, registre por q
 - **Cadastro por link**: o Gemini lê a página do produto e preenche nome, loja, imagem, preço e categoria. Funciona com Amazon, Mercado Livre, Magalu, Kabum, Shopee e outras lojas.
 - **Motivo e prioridade**: cada item guarda por que você quer comprá-lo (Preciso / Quero / Desejo).
 - **Histórico de preço**: gráfico com preço-alvo, mínimo, médio e variação desde o cadastro.
-- **Alertas**: preço abaixo do alvo, queda percentual configurável, menor preço registrado e volta ao estoque. As notificações usam o service worker, então funcionam no Android com o app instalado.
+- **Monitoramento 24/7**: um job agendado no GitHub Actions verifica os preços a cada 3 horas, mesmo com o app fechado.
+- **Alertas por push**: preço abaixo do alvo, queda percentual configurável, menor preço registrado e volta ao estoque, enviados por Web Push para todos os aparelhos conectados.
+- **APK para Android**: gerado pelo GitHub Actions (Trusted Web Activity) e publicado em Releases.
+- **Sincronização**: os dados ficam no servidor (Upstash Redis) e aparecem em qualquer aparelho com a chave de acesso. Sem banco configurado, o app funciona só no aparelho.
 - **Análise de desconto**: o carimbo `DESCONTO INFLADO` aparece quando a loja mostra um "de/por", mas o histórico já registrou aquele preço antes.
 - **Custo em horas de trabalho**: com a renda mensal e as horas trabalhadas, cada produto mostra quanto tempo de trabalho representa.
 - **Análise da IA**: recomendação objetiva ("Comprar agora" ou "Aguardar") com base em histórico, tendência, motivo e prioridade.
@@ -38,34 +41,52 @@ Wishlist com monitoramento de preços. Cole o link de um produto, registre por q
 | Camada | Tecnologia |
 | --- | --- |
 | Interface | React 19, TypeScript, Tailwind CSS 4, Recharts, Lucide |
-| Servidor | Express (rotas `/api`) + Vite em modo middleware no desenvolvimento |
+| Servidor | Express (rotas `/api`), Web Push (`web-push`, chaves VAPID geradas automaticamente) |
+| Banco | Upstash Redis via REST (arquivo local em desenvolvimento) |
+| Automação | GitHub Actions: CI, monitoramento agendado e build do APK |
+| Android | Trusted Web Activity gerada com `@bubblewrap/core` |
 | IA | `@google/genai` com `gemini-2.5-flash`, usando as ferramentas `urlContext` e `googleSearch` |
 | PWA | `vite-plugin-pwa` (Workbox), fontes locais via Fontsource |
-| Dados | `localStorage`, atrás de uma interface de repositório |
+| Testes | Vitest (regras de alerta e monitoramento no servidor) |
 
 ## Arquitetura
 
 ```
+GitHub Actions (cron, 3 h) ──► POST /api/check-all ──► Gemini (urlContext + googleSearch)
+                                      │
+             App (PWA / APK) ◄──── Web Push ◄──┤
+                    │                          ├──► Upstash Redis
+                    └──── /api (chave de acesso) ──┘
+```
+
+```
+server.ts              # Express: /api, assetlinks e arquivos do app
+server/
+├── api.ts             # rotas, verificação e monitoramento (checkAll)
+├── repo.ts            # produtos, alertas, configurações e inscrições de push
+├── db.ts              # Upstash Redis (REST) ou arquivo local
+└── push.ts            # Web Push com VAPID gerado no primeiro uso
 src/
-├── components/        # UI (cards, modais, cabeçalho) e primitivas em ui.tsx
-├── hooks/             # instalação do PWA e status de conexão
+├── components/        # UI (cards, modais, sincronização)
 ├── services/
-│   ├── priceChecker.ts      # extração de preço com Gemini (sem dependência do navegador)
+│   ├── alerts.ts            # regras de alerta (puras, usadas no app e no servidor)
+│   ├── priceChecker.ts      # extração de preço com Gemini
 │   ├── purchaseAnalyzer.ts  # análise de compra com Gemini
-│   ├── monitor.ts           # regras de alerta e notificações
-│   ├── storage.ts           # repositório (hoje em localStorage)
-│   └── apiClient.ts         # chamadas do front para o servidor
-├── types/
-└── utils/
-server.ts              # Express: /api/check-price, /api/analyze-purchase, /api/health
+│   ├── storage.ts           # repositório local ou remoto, mesma interface
+│   ├── sync.ts / push.ts    # conexão com o servidor e inscrição de push
+│   └── apiClient.ts
+└── sw.ts              # service worker: cache offline, push e clique na notificação
+android/generate-twa.mjs  # projeto Android (TWA) gerado no CI
+tests/                 # Vitest
 ```
 
 Decisões que valem destacar:
 
-- **A chave do Gemini fica no servidor.** O front só conversa com `/api/*`, então a chave nunca vai para o navegador.
-- **`priceChecker` e `purchaseAnalyzer` não dependem de React nem do navegador.** A mesma lógica pode rodar num job agendado (cron) para monitorar preços 24/7.
-- **`storage.ts` expõe uma interface `IProductRepository`.** Trocar `localStorage` por Firebase ou Supabase é implementar essa interface.
+- **A chave do Gemini fica no servidor.** O app só conversa com `/api/*`, protegido por uma chave de acesso.
+- **As regras de alerta são funções puras** (`alerts.ts`), usadas tanto no modo local quanto no servidor, e cobertas por testes.
+- **Um repositório, dois modos.** `storage.ts` expõe a mesma interface para `localStorage` e para a API; o app não sabe onde os dados estão.
 - **Leituras com baixa confiança não disparam alertas.** Ficam marcadas como `REVISÃO MANUAL`, para evitar notificações falsas.
+- **Sem configuração de push.** As chaves VAPID são geradas no primeiro uso e guardadas no banco.
 
 ## Como rodar
 
@@ -77,7 +98,7 @@ cp .env.example .env.local   # e preencha GEMINI_API_KEY
 npm run dev                  # http://localhost:3000
 ```
 
-Sem a chave, o app funciona com preenchimento manual. Para ver o app com dados, use **Configurações → Carregar exemplo**.
+Sem a chave do Gemini, o app funciona com preenchimento manual. Sem as variáveis do Upstash, os dados ficam em `.data/` (desenvolvimento). Para ver o app com dados, use **Configurações → Carregar exemplo**.
 
 | Script | O que faz |
 | --- | --- |
@@ -85,19 +106,12 @@ Sem a chave, o app funciona com preenchimento manual. Para ver o app com dados, 
 | `npm run build` | build de produção em `dist/` |
 | `npm start` | serve o build de produção |
 | `npm run lint` | checagem de tipos com `tsc` |
+| `npm test` | testes com Vitest |
 | `npm run icons` | regenera os ícones do PWA a partir de `scripts/generate-icons.js` |
 
-## Deploy
+## Deploy, monitoramento 24/7 e APK
 
-O app precisa do servidor Express (é ele que guarda a chave do Gemini), então o deploy é como **Web Service**. Exemplo no [Render](https://render.com):
-
-| Campo | Valor |
-| --- | --- |
-| Build Command | `npm ci && npm run build` |
-| Start Command | `npm start` |
-| Variável de ambiente | `GEMINI_API_KEY` |
-
-Depois do deploy, abra a URL no Chrome do Android e use **Instalar app**.
+O passo a passo completo (Upstash, Render, GitHub Actions e instalação no celular) está em [docs/CONFIGURACAO.md](docs/CONFIGURACAO.md).
 
 ## Identidade visual
 
@@ -109,10 +123,10 @@ O app segue o estilo **Retro Ledger**: fundo linho (`#FAF7F2`), cards off-white 
 
 ## Próximos passos
 
-- [ ] Monitoramento 24/7 com GitHub Actions (cron) usando o `priceChecker`
-- [ ] Persistência em nuvem (Supabase ou Firebase) implementando `IProductRepository`
+- [x] Monitoramento 24/7 com GitHub Actions
+- [x] Persistência em nuvem e sincronização entre aparelhos
+- [x] Notificações push e APK para Android
 - [ ] Extensão de navegador para adicionar produtos direto da página da loja
-- [ ] Testes unitários para as regras de alerta em `monitor.ts`
 
 ## Licença
 
