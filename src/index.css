@@ -1,0 +1,307 @@
+@import "tailwindcss";
+
+/*
+ * Retro Ledger: tokens de cor, tipografia e sombra.
+ * As classes de componente ficam em @layer components para que utilitários
+ * do Tailwind (h-8, p-0, bg-[...]) consigam sobrescrevê-las.
+ */
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, monospace;
+
+  --color-linen: #FAF7F2;
+  --color-paper: #FFFDF9;
+  --color-ink: #292524;
+  --color-ink-muted: #78716C;
+  --color-clay: #E8DFD1;
+  --color-clay-shadow: #E5DCD0;
+  --color-mint: #166534;
+  --color-mint-soft: #EAF7EE;
+  --color-terracotta: #991B1B;
+  --color-terracotta-soft: #FDF2F0;
+}
+
+@layer base {
+  :root {
+    --bg-ledger: #FAF7F2;
+    --card-ledger: #FFFDF9;
+    --text-ledger: #292524;
+    --text-muted: #78716C;
+    --border-ledger: #E8DFD1;
+    --shadow-ledger: #E5DCD0;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--bg-ledger);
+    color: var(--text-ledger);
+  }
+
+  button:not(:disabled),
+  [role='button'],
+  label[for],
+  select {
+    cursor: pointer;
+  }
+
+  /* Scrollbars finas (6px), em tons de bege e marrom-claro */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #D8CEBE transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #D8CEBE;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #C4B7A3;
+  }
+}
+
+@layer components {
+  .font-mono-ledger {
+    font-family: var(--font-mono);
+  }
+
+  /* Sombra sólida neo-brutalista light: 2px 2px 0px #E5DCD0 */
+  .retro-card {
+    background-color: var(--card-ledger);
+    border: 1px solid var(--border-ledger);
+    border-radius: 14px;
+    box-shadow: 2px 2px 0px var(--shadow-ledger);
+    transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+  }
+
+  .retro-card-interactive {
+    cursor: pointer;
+  }
+  .retro-card-interactive:active,
+  .retro-card-pressed {
+    box-shadow: 0px 0px 0px var(--shadow-ledger);
+    transform: translate(1px, 1px);
+  }
+
+  .retro-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    min-height: 40px;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border-ledger);
+    border-radius: 12px;
+    background-color: var(--card-ledger);
+    color: var(--text-ledger);
+    font-weight: 500;
+    white-space: nowrap;
+    box-shadow: 2px 2px 0px var(--shadow-ledger);
+    transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+    user-select: none;
+  }
+  .retro-btn > svg {
+    flex-shrink: 0;
+  }
+  .retro-btn:active:not(:disabled),
+  .retro-btn.pressed {
+    box-shadow: 0px 0px 0px var(--shadow-ledger);
+    transform: translate(1px, 1px);
+  }
+  .retro-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .retro-btn:focus-visible {
+    outline: 2px solid var(--text-ledger);
+    outline-offset: 2px;
+  }
+
+  /* Botão quadrado só com ícone */
+  .retro-icon-btn {
+    padding: 0;
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+  }
+
+  /* Botão escuro (ação principal) */
+  .retro-btn-primary {
+    background-color: var(--text-ledger);
+    border-color: var(--text-ledger);
+    color: var(--bg-ledger);
+    font-weight: 700;
+  }
+  .retro-btn-primary:hover:not(:disabled) {
+    background-color: #1C1917;
+  }
+
+  /* Botão verde (registrar compra) */
+  .retro-btn-success {
+    background-color: #166534;
+    border-color: #166534;
+    color: #FFFFFF;
+    font-weight: 700;
+  }
+  .retro-btn-success:hover:not(:disabled) {
+    background-color: #14532D;
+  }
+
+  /* Botão flutuante "+" no estilo dos cards */
+  .retro-fab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background-color: var(--card-ledger);
+    border: 1px solid var(--border-ledger);
+    color: var(--text-ledger);
+    box-shadow: 2px 2px 0px var(--shadow-ledger);
+    transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  }
+  .retro-fab:hover {
+    background-color: #F5EFE6;
+  }
+  .retro-fab:active {
+    box-shadow: 0px 0px 0px var(--shadow-ledger);
+    transform: translate(1px, 1px);
+  }
+
+  /* Campos de formulário */
+  .ledger-input {
+    width: 100%;
+    min-height: 40px;
+    background-color: var(--bg-ledger);
+    border: 1px solid var(--border-ledger);
+    border-radius: 12px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--text-ledger);
+    transition: border-color 120ms ease;
+  }
+  .ledger-input:focus {
+    outline: none;
+    border-color: var(--text-ledger);
+  }
+  .ledger-input::placeholder {
+    color: #A8A29E;
+  }
+
+  .ledger-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+  }
+
+  /* Zero-pill: abas de pasta de arquivo suspensa */
+  .folder-tab {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 3px 8px;
+    border: 1px solid var(--border-ledger);
+    border-bottom: none;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    background-color: var(--card-ledger);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+
+  /* Abas de filtro de status (maiores, para toque) */
+  .status-tab {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 8px 12px;
+    min-height: 40px;
+    border: 1px solid var(--border-ledger);
+    border-bottom: none;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    background-color: transparent;
+    color: var(--text-muted);
+    white-space: nowrap;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .status-tab[aria-selected='true'] {
+    background-color: var(--card-ledger);
+    color: var(--text-ledger);
+    font-weight: 700;
+    border-color: var(--text-ledger);
+  }
+
+  /* Carimbos de status: Space Mono maiúsculo, borda fina, leve rotação (-2deg) */
+  .ledger-stamp {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 7px;
+    border-width: 1px;
+    border-style: solid;
+    border-radius: 4px;
+    transform: rotate(-2deg);
+    display: inline-block;
+    white-space: nowrap;
+  }
+
+  /* Skeleton em tons de linho */
+  .skeleton-ledger {
+    animation: ledger-pulse 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    border-radius: 6px;
+  }
+
+  /* Fade leve quando o preço de um card é atualizado */
+  .price-fade {
+    animation: price-fade 400ms ease;
+  }
+}
+
+@keyframes ledger-pulse {
+  0%,
+  100% {
+    background-color: #F3EEE5;
+  }
+  50% {
+    background-color: #E5DDD0;
+  }
+}
+
+@keyframes price-fade {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}

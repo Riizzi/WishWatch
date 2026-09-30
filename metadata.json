@@ -1,0 +1,6 @@
+{
+  "name": "WishWatch",
+  "description": "Wishlist e monitoramento de preços com análise de histórico e alertas de queda.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
