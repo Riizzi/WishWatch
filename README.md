@@ -1,10 +1,12 @@
 <div align="center">
 
-<img src="public/icon.svg" width="88" alt="Ícone do WishWatch" />
+<img src="public/icon.svg" width="88" alt="WishWatch icon" />
 
 # WishWatch
 
-Wishlist com monitoramento de preços. Cole o link de um produto, registre por que você quer comprá-lo e acompanhe o histórico de preço com alertas de queda.
+**English** · [Português](README.pt-BR.md)
+
+A wishlist with price tracking. Paste a product link, note why you want it, and follow its price history with drop alerts.
 
 ![React](https://img.shields.io/badge/React_19-292524?logo=react&logoColor=61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-292524?logo=typescript&logoColor=3178C6)
@@ -15,119 +17,121 @@ Wishlist com monitoramento de preços. Cole o link de um produto, registre por q
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/mobile-lista.png" width="260" alt="Lista de produtos no celular" />
+  <img src="docs/screenshots/mobile-lista.png" width="260" alt="Product list on mobile" />
   &nbsp;
-  <img src="docs/screenshots/mobile-detalhe.png" width="260" alt="Histórico de preço de um produto" />
+  <img src="docs/screenshots/mobile-detalhe.png" width="260" alt="Price history for a product" />
 </p>
 
-## Funcionalidades
+> The app interface is in Brazilian Portuguese and targets Brazilian stores.
 
-- **Cadastro por link**: o Gemini lê a página do produto e preenche nome, loja, imagem, preço e categoria. Funciona com Amazon, Mercado Livre, Magalu, Kabum, Shopee e outras lojas.
-- **Motivo e prioridade**: cada item guarda por que você quer comprá-lo (Preciso / Quero / Desejo).
-- **Histórico de preço**: gráfico com preço-alvo, mínimo, médio e variação desde o cadastro.
-- **Monitoramento 24/7**: um job agendado no GitHub Actions verifica os preços a cada 3 horas, mesmo com o app fechado.
-- **Alertas por push**: preço abaixo do alvo, queda percentual configurável, menor preço registrado e volta ao estoque, enviados por Web Push para todos os aparelhos conectados.
-- **APK para Android**: gerado pelo GitHub Actions (Trusted Web Activity) e publicado em Releases.
-- **Sincronização**: os dados ficam no servidor (Upstash Redis) e aparecem em qualquer aparelho com a chave de acesso. Sem banco configurado, o app funciona só no aparelho.
-- **Análise de desconto**: o carimbo `DESCONTO INFLADO` aparece quando a loja mostra um "de/por", mas o histórico já registrou aquele preço antes.
-- **Custo em horas de trabalho**: com a renda mensal e as horas trabalhadas, cada produto mostra quanto tempo de trabalho representa.
-- **Análise da IA**: recomendação objetiva ("Comprar agora" ou "Aguardar") com base em histórico, tendência, motivo e prioridade.
-- **Economia registrada**: ao marcar um item como comprado, o app soma a diferença entre o preço do cadastro e o valor pago.
-- **PWA instalável**: funciona offline para consulta, com ícone monocromático para temas do Android.
-- **Backup**: exportação e importação da wishlist em JSON.
+## Features
 
-## Stack
+- **Add by link**: Gemini reads the product page and fills in name, store, image, price and category. Works with Amazon, Mercado Livre, Magalu, Kabum, Shopee and other stores.
+- **Reason and priority**: each item records why you want it (Need / Want / Wish).
+- **Price history**: chart with target price, lowest, average and change since the item was added.
+- **24/7 monitoring**: a scheduled GitHub Actions job checks prices every 3 hours, even with the app closed.
+- **Push alerts**: price below target, configurable percentage drop, all-time low and back in stock, sent via Web Push to every connected device.
+- **Android APK**: built by GitHub Actions (Trusted Web Activity) and published to Releases.
+- **Sync**: data lives on the server (Upstash Redis) and is available on any device with the access key. Without a database, the app runs locally on the device.
+- **Discount check**: an `INFLATED DISCOUNT` stamp appears when a store shows a "was/now" price the history has already recorded before.
+- **Cost in working hours**: given monthly income and hours worked, each product shows how much work time it represents.
+- **AI analysis**: an objective recommendation ("Buy now" or "Wait") based on history, trend, reason and priority.
+- **Savings tracker**: marking an item as bought adds up the difference between the original price and what you paid.
+- **Installable PWA**: works offline for browsing, with a monochrome icon for Android themed icons.
+- **Backup**: export and import the wishlist as JSON.
 
-| Camada | Tecnologia |
+## Tech stack
+
+| Layer | Technology |
 | --- | --- |
-| Interface | React 19, TypeScript, Tailwind CSS 4, Recharts, Lucide |
-| Servidor | Express (rotas `/api`), Web Push (`web-push`, chaves VAPID geradas automaticamente) |
-| Banco | Upstash Redis via REST (arquivo local em desenvolvimento) |
-| Automação | GitHub Actions: CI, monitoramento agendado e build do APK |
-| Android | Trusted Web Activity gerada com `@bubblewrap/core` |
-| IA | `@google/genai` com `gemini-2.5-flash`, usando as ferramentas `urlContext` e `googleSearch` |
-| PWA | `vite-plugin-pwa` (Workbox), fontes locais via Fontsource |
-| Testes | Vitest (regras de alerta e monitoramento no servidor) |
+| UI | React 19, TypeScript, Tailwind CSS 4, Recharts, Lucide |
+| Server | Express (`/api` routes), Web Push (`web-push`, VAPID keys generated automatically) |
+| Database | Upstash Redis over REST (local file in development) |
+| Automation | GitHub Actions: CI, scheduled monitoring and APK build |
+| Android | Trusted Web Activity generated with `@bubblewrap/core` |
+| AI | `@google/genai` with `gemini-2.5-flash`, using the `urlContext` and `googleSearch` tools |
+| PWA | `vite-plugin-pwa` (Workbox), self-hosted fonts via Fontsource |
+| Tests | Vitest (alert rules and server-side monitoring) |
 
-## Arquitetura
+## Architecture
 
 ```
 GitHub Actions (cron, 3 h) ──► POST /api/check-all ──► Gemini (urlContext + googleSearch)
                                       │
              App (PWA / APK) ◄──── Web Push ◄──┤
                     │                          ├──► Upstash Redis
-                    └──── /api (chave de acesso) ──┘
+                    └──── /api (access key) ───┘
 ```
 
 ```
-server.ts              # Express: /api, assetlinks e arquivos do app
+server.ts              # Express: /api, assetlinks and static app files
 server/
-├── api.ts             # rotas, verificação e monitoramento (checkAll)
-├── repo.ts            # produtos, alertas, configurações e inscrições de push
-├── db.ts              # Upstash Redis (REST) ou arquivo local
-└── push.ts            # Web Push com VAPID gerado no primeiro uso
+├── api.ts             # routes, price checks and monitoring (checkAll)
+├── repo.ts            # products, alerts, settings and push subscriptions
+├── db.ts              # Upstash Redis (REST) or local file
+└── push.ts            # Web Push with VAPID keys generated on first use
 src/
-├── components/        # UI (cards, modais, sincronização)
+├── components/        # UI (cards, modals, sync)
 ├── services/
-│   ├── alerts.ts            # regras de alerta (puras, usadas no app e no servidor)
-│   ├── priceChecker.ts      # extração de preço com Gemini
-│   ├── purchaseAnalyzer.ts  # análise de compra com Gemini
-│   ├── storage.ts           # repositório local ou remoto, mesma interface
-│   ├── sync.ts / push.ts    # conexão com o servidor e inscrição de push
+│   ├── alerts.ts            # alert rules (pure, shared by app and server)
+│   ├── priceChecker.ts      # price extraction with Gemini
+│   ├── purchaseAnalyzer.ts  # purchase analysis with Gemini
+│   ├── storage.ts           # local or remote repository, same interface
+│   ├── sync.ts / push.ts    # server connection and push subscription
 │   └── apiClient.ts
-└── sw.ts              # service worker: cache offline, push e clique na notificação
-android/generate-twa.mjs  # projeto Android (TWA) gerado no CI
+└── sw.ts              # service worker: offline cache, push and notification click
+android/generate-twa.mjs  # Android project (TWA) generated in CI
 tests/                 # Vitest
 ```
 
-Decisões que valem destacar:
+Design decisions worth noting:
 
-- **A chave do Gemini fica no servidor.** O app só conversa com `/api/*`, protegido por uma chave de acesso.
-- **As regras de alerta são funções puras** (`alerts.ts`), usadas tanto no modo local quanto no servidor, e cobertas por testes.
-- **Um repositório, dois modos.** `storage.ts` expõe a mesma interface para `localStorage` e para a API; o app não sabe onde os dados estão.
-- **Leituras com baixa confiança não disparam alertas.** Ficam marcadas como `REVISÃO MANUAL`, para evitar notificações falsas.
-- **Sem configuração de push.** As chaves VAPID são geradas no primeiro uso e guardadas no banco.
+- **The Gemini key stays on the server.** The app only talks to `/api/*`, protected by an access key.
+- **Alert rules are pure functions** (`alerts.ts`), shared by local and server modes and covered by tests.
+- **One repository, two modes.** `storage.ts` exposes the same interface for `localStorage` and the API, so the app doesn't care where data lives.
+- **Low-confidence readings never trigger alerts.** They are flagged for `MANUAL REVIEW` to avoid false notifications.
+- **Zero push setup.** VAPID keys are generated on first use and stored in the database.
 
-## Como rodar
+## Getting started
 
-Pré-requisitos: Node.js 22+ e uma [chave da API do Gemini](https://aistudio.google.com/apikey).
+Requirements: Node.js 22+ and a [Gemini API key](https://aistudio.google.com/apikey).
 
 ```bash
 npm install
-cp .env.example .env.local   # e preencha GEMINI_API_KEY
+cp .env.example .env.local   # then fill in GEMINI_API_KEY
 npm run dev                  # http://localhost:3000
 ```
 
-Sem a chave do Gemini, o app funciona com preenchimento manual. Sem as variáveis do Upstash, os dados ficam em `.data/` (desenvolvimento). Para ver o app com dados, use **Configurações → Carregar exemplo**.
+Without a Gemini key, the app still works with manual entry. Without the Upstash variables, data is stored in `.data/` (development only). To see the app with data, go to **Configurações → Carregar exemplo** (Settings → Load sample).
 
-| Script | O que faz |
+| Script | What it does |
 | --- | --- |
-| `npm run dev` | servidor Express + Vite com hot reload |
-| `npm run build` | build de produção em `dist/` |
-| `npm start` | serve o build de produção |
-| `npm run lint` | checagem de tipos com `tsc` |
-| `npm test` | testes com Vitest |
-| `npm run icons` | regenera os ícones do PWA a partir de `scripts/generate-icons.js` |
+| `npm run dev` | Express server + Vite with hot reload |
+| `npm run build` | production build into `dist/` |
+| `npm start` | serves the production build |
+| `npm run lint` | type check with `tsc` |
+| `npm test` | tests with Vitest |
+| `npm run icons` | regenerates PWA icons from `scripts/generate-icons.js` |
 
-## Deploy, monitoramento 24/7 e APK
+## Deployment, 24/7 monitoring and APK
 
-O passo a passo completo (Upstash, Render, GitHub Actions e instalação no celular) está em [docs/CONFIGURACAO.md](docs/CONFIGURACAO.md).
+The full step-by-step guide (Upstash, Render, GitHub Actions and installing on a phone) is in [docs/CONFIGURACAO.md](docs/CONFIGURACAO.md) (Portuguese).
 
-## Identidade visual
+## Visual identity
 
-O app segue o estilo **Retro Ledger**: fundo linho (`#FAF7F2`), cards off-white com sombra sólida de 2px, textos em Plus Jakarta Sans e valores em Space Mono. O ícone segue o padrão monocromático do Android: squircle cinza com símbolo preto.
+The app follows the **Retro Ledger** style: linen background (`#FAF7F2`), off-white cards with a solid 2px shadow, Plus Jakarta Sans for text and Space Mono for numbers. The icon follows Android's monochrome pattern: a gray squircle with a black symbol.
 
 <p align="center">
-  <img src="docs/screenshots/desktop-detalhe.png" width="720" alt="Detalhe do produto no desktop" />
+  <img src="docs/screenshots/desktop-detalhe.png" width="720" alt="Product detail on desktop" />
 </p>
 
-## Próximos passos
+## Roadmap
 
-- [x] Monitoramento 24/7 com GitHub Actions
-- [x] Persistência em nuvem e sincronização entre aparelhos
-- [x] Notificações push e APK para Android
-- [ ] Extensão de navegador para adicionar produtos direto da página da loja
+- [x] 24/7 monitoring with GitHub Actions
+- [x] Cloud persistence and multi-device sync
+- [x] Push notifications and Android APK
+- [ ] Browser extension to add products straight from the store page
 
-## Licença
+## License
 
 [MIT](LICENSE)
