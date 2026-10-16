@@ -11,7 +11,13 @@ import { AddProductModal } from './components/AddProductModal.tsx';
 import { BuyPromptModal } from './components/BuyPromptModal.tsx';
 import { AlertsDrawer } from './components/AlertsDrawer.tsx';
 import { SettingsModal } from './components/SettingsModal.tsx';
+import { cl4pCapturarDaUrl, cl4pPublicar } from './services/cl4pLink.ts';
+import { montarResumoWish } from './services/cl4pWish.ts';
+
 import { Plus, ArrowUpDown, Inbox, Search, RefreshCw } from 'lucide-react';
+
+// Vínculo com o hub CL4P-RZ vindo pela URL (?cl4p=...)
+cl4pCapturarDaUrl();
 
 type SortOption = 'maior_queda' | 'menor_preco' | 'mais_recente' | 'prioridade';
 
@@ -24,6 +30,11 @@ const STATUS_TABS: { id: 'todos' | ProductStatus; label: string }[] = [
 
 export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
+
+  // Envia o resumo da wishlist ao hub CL4P-RZ sempre que a lista mudar
+  useEffect(() => {
+    if (products.length) cl4pPublicar('wishwatch', () => montarResumoWish(products));
+  }, [products]);
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [loading, setLoading] = useState(true);

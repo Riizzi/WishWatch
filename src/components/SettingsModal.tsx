@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ServerHealth, UserSettings } from '../types/index.ts';
 import { SyncStatus } from '../services/sync.ts';
 import { SyncSection, NotificationSection } from './SyncSettings.tsx';
+import Cl4pLinkCard from './Cl4pLinkCard.tsx';
 import { ModalShell, ModalHeader } from './ui.tsx';
 import { storage } from '../services/storage.ts';
 import { formatBRL } from '../utils/formatters.ts';
@@ -128,6 +129,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
 
           <SyncSection status={syncStatus} health={health} onStatusChange={onSyncStatusChange} />
+
+          <Cl4pLinkCard />
 
           {/* Seção 1: Renda e Horas de Trabalho */}
           <form onSubmit={handleSave} className="space-y-4 pt-3 border-t border-[#E8DFD1]">
